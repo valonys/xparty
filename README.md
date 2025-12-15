@@ -6,8 +6,7 @@
 
 This contains everything you need to run your app locally.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1pp0EvL84PerAj1eAGHtEIbQ3mvEQMl2E
-
+View your app in ValonyLabs Frontier AI Studio: https://valonylabs.com
 ## Run Locally
 
 **Prerequisites:**  Node.js
