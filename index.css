@@ -1,0 +1,35 @@
+/* App-level CSS for a few custom utilities not covered by the Tailwind CDN build. */
+
+/* iOS safe-area bottom padding helper (used by the mobile bottom nav). */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-in-down {
+  from { opacity: 0; transform: translate3d(0, -12px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translate3d(0, 12px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 280ms ease-out both;
+}
+
+.animate-fade-in-down {
+  animation: fade-in-down 360ms ease-out both;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 360ms ease-out both;
+}
+
+

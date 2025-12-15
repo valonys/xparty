@@ -1,0 +1,8 @@
+{
+  "name": "Nível X - Gestão de Reencontro",
+  "description": "Organizador do Reencontro de 25 Anos e Guardião de Memórias",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
