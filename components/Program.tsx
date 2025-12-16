@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { suggestCocktail } from '../services/geminiService';
 import { Button } from './Button';
-import { Wine, Utensils, Clock } from 'lucide-react';
+import { Wine, Utensils, Clock, Music } from 'lucide-react';
 
 const SCHEDULE = [
     { time: '14:00', title: 'Chegada & Welcome Drinks', desc: 'Convívio na piscina' },
@@ -25,9 +25,18 @@ export const Program: React.FC = () => {
 
   const handleSuggestCocktail = async () => {
     setIsLoading(true);
-    const suggestion = await suggestCocktail(['Vodka', 'Maracujá', 'Gengibre', 'Açúcar Mascavado']);
-    setAiCocktail(suggestion);
-    setIsLoading(false);
+    try {
+      const suggestion = await suggestCocktail(['Vodka', 'Maracujá', 'Gengibre', 'Açúcar Mascavado']);
+      const normalized = (suggestion ?? '').trim();
+      setAiCocktail(
+        normalized ||
+          'Não foi possível gerar o cocktail agora. Tenta de novo mais tarde ou confirma a configuração da IA.'
+      );
+    } catch {
+      setAiCocktail('Não foi possível gerar o cocktail agora. Tenta de novo mais tarde.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -70,21 +79,18 @@ export const Program: React.FC = () => {
                 </div>
 
                 <div className="mt-8 pt-6 border-t border-dashed border-neutral-700">
+                    <h3 className="font-bold text-white mb-2 flex items-center gap-2"><Music size={16} className="animate-bounce" /> Planeador de Festas IA</h3>
+                    <p className="text-xs text-gray-400 mb-4">Pede à IA para inventar um cocktail de assinatura para o grupo.</p>
+                    
                     {!aiCocktail ? (
-                        <Button
-                            onClick={handleSuggestCocktail}
-                            isLoading={isLoading}
-                            className="w-full bg-blue-950 hover:bg-blue-900 border-blue-900 shadow-lg shadow-blue-950/40"
-                        >
-                            Gerar Cocktail Menu "XNivel"
+                        <Button onClick={handleSuggestCocktail} isLoading={isLoading} className="w-full">
+                            Gerar Cocktail "Nível X"
                         </Button>
                     ) : (
-                        <Button
-                            onClick={() => setAiCocktail('')}
-                            className="w-full bg-blue-950 hover:bg-blue-900 border-blue-900 shadow-lg shadow-blue-950/40"
-                        >
-                            Gerar Cocktail Menu "XNivel"
-                        </Button>
+                        <div className="bg-red-900/20 border border-red-900/50 p-4 rounded-lg animate-fade-in">
+                            <p className="text-sm font-serif italic text-red-200">{aiCocktail}</p>
+                            <button onClick={() => setAiCocktail('')} className="text-xs text-red-500 mt-2 underline">Tentar outro</button>
+                        </div>
                     )}
                 </div>
             </div>
