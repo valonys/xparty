@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { suggestCocktail } from '../services/geminiService';
 import { Button } from './Button';
-import { Wine, Utensils, Clock, Music } from 'lucide-react';
+import { Wine, Utensils, Clock, MapPin, Music } from 'lucide-react';
 
 const SCHEDULE = [
     { time: '14:00', title: 'Chegada & Welcome Drinks', desc: 'Convívio na piscina' },
@@ -25,18 +25,9 @@ export const Program: React.FC = () => {
 
   const handleSuggestCocktail = async () => {
     setIsLoading(true);
-    try {
-      const suggestion = await suggestCocktail(['Vodka', 'Maracujá', 'Gengibre', 'Açúcar Mascavado']);
-      const normalized = (suggestion ?? '').trim();
-      setAiCocktail(
-        normalized ||
-          'Não foi possível gerar o cocktail agora. Tenta de novo mais tarde ou confirma a configuração da IA.'
-      );
-    } catch {
-      setAiCocktail('Não foi possível gerar o cocktail agora. Tenta de novo mais tarde.');
-    } finally {
-      setIsLoading(false);
-    }
+    const suggestion = await suggestCocktail(['Vodka', 'Maracujá', 'Gengibre', 'Açúcar Mascavado']);
+    setAiCocktail(suggestion);
+    setIsLoading(false);
   };
 
   return (
