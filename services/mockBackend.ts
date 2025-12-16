@@ -52,16 +52,39 @@ class MockBackendService {
     this.addTrace(trace);
   }
 
+  private ensureGuestRecord(id: string, name: string) {
+    const guests = this.getGuests();
+    const existing = guests.find(g => g.id === id);
+    if (existing) return existing;
+
+    const newGuest: GuestData = {
+      id,
+      name,
+      status: 'pending',
+      paymentStatus: 'unpaid',
+      amountPaid: 0,
+      totalDue: 50000,
+      paymentMethod: 'multicaixa_express',
+    };
+    const updatedGuests = [newGuest, ...guests];
+    this.setStorage('nivelx_guests', updatedGuests);
+    return newGuest;
+  }
+
   login(userId: string): User | null {
     // Simulating login. 
     // 'admin' gives full access.
     
     const normalized = userId.trim().toLowerCase();
     if (normalized === 'admin' || normalized === 'ataliba') {
-      return { id: 'ataliba', name: 'Ataliba', role: UserRole.ADMIN };
+      const user = { id: 'ataliba', name: 'Ataliba', role: UserRole.ADMIN } as User;
+      this.ensureGuestRecord(user.id, user.name);
+      return user;
     }
     if (normalized === 'jado') {
-      return { id: 'jado', name: 'Jado', role: UserRole.ADMIN_VIEWER };
+      const user = { id: 'jado', name: 'Jado', role: UserRole.ADMIN_VIEWER } as User;
+      this.ensureGuestRecord(user.id, user.name);
+      return user;
     }
 
     // Check if ID matches a guest name

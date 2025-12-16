@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User } from './types';
+import { User, UserRole } from './types';
 import { mockBackend } from './services/mockBackend';
 import { Logo } from './components/Logo';
 import { Button } from './components/Button';
@@ -91,7 +91,7 @@ export default function App() {
   }
 
   // Main Application Layout
-  const isAdminAny = user.role === 'ADMIN' || user.role === 'ADMIN_VIEWER';
+  const isAdminAny = user.role === UserRole.ADMIN || user.role === UserRole.ADMIN_VIEWER;
   return (
     <div className="min-h-screen bg-black text-gray-200 flex flex-col md:flex-row font-sans">
       

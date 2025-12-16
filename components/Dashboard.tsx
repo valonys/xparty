@@ -220,79 +220,90 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
         </div>
       )}
 
+      {/* Welcome text for guests */}
       {!isAdminAny && (
-        <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-2xl">
-          <div className="text-center">
-            <h2 className="text-2xl font-serif text-white mb-4">Sejam Bem-Vindos as 20Torres XNivel Kleromanto.</h2>
-            <p className="text-gray-400 max-w-2xl mx-auto">
-              Tropas a contagem regressiva começou. Verifiquem o programa, confirma a tua presença com mais duas gajas, deia um palpite sobre o menu e prepara-te para reviver os mais de 35 anos de convivencia e histórias no dia 27 de Dezembro, e mais, com a saudosa homenagem ao kota Impitígo aKa Man-Barras.
-            </p>
-          </div>
-
-          {/* Guest self-service: RSVP + payment proof */}
-          <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-black/30 border border-neutral-800 rounded-xl p-6">
-              <h3 className="font-bold text-white mb-3">Minha Presença</h3>
-              <p className="text-sm text-gray-400 mb-4">Confirma ou recusa a tua presença. Isto fica registado nos Traços com timestamp.</p>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={() => handleMyStatus('confirmed')}>Confirmar</Button>
-                <Button variant="secondary" onClick={() => handleMyStatus('declined')}>Recusar</Button>
-                <Button variant="ghost" onClick={() => handleMyStatus('pending')}>Pendente</Button>
-              </div>
-            </div>
-
-            <div className="bg-black/30 border border-neutral-800 rounded-xl p-6">
-              <h3 className="font-bold text-white mb-3">Comprovativo de Pagamento</h3>
-              <p className="text-sm text-gray-400 mb-4">Carrega uma imagem ou PDF do comprovativo. Isto alimenta o estado geral de caixa.</p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                <div className="sm:col-span-1">
-                  <label className="block text-xs text-gray-500 mb-1">Valor (AOA)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={paymentAmount}
-                    onChange={(e) => setPaymentAmount(Number(e.target.value))}
-                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-white outline-none focus:ring-1 focus:ring-red-600"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,application/pdf"
-                    className="hidden"
-                    onChange={(e) => setSelectedProof(e.target.files?.[0] ?? null)}
-                  />
-                  <div className="flex gap-2">
-                    <Button variant="secondary" className="flex-1" onClick={() => fileInputRef.current?.click()}>
-                      <Upload size={18} /> Selecionar ficheiro
-                    </Button>
-                    <Button className="flex-1" onClick={handleUploadProof} disabled={!selectedProof || isUploadingProof} isLoading={isUploadingProof}>
-                      <FileText size={18} /> Enviar
-                    </Button>
-                  </div>
-                  {selectedProof && (
-                    <p className="text-xs text-gray-500 mt-2 truncate">Selecionado: {selectedProof.name}</p>
-                  )}
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <Button variant="ghost" className="text-red-400 hover:text-red-300" onClick={handleMyNoPay}>
-                      Marcar como não pago (por agora)
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {myProofs.length > 0 && (
-                <p className="text-xs text-gray-500 mt-4">
-                  Já tens {myProofs.length} comprovativo(s) carregado(s).
-                </p>
-              )}
-            </div>
-          </div>
+        <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-2xl text-center">
+          <h2 className="text-2xl font-serif text-white mb-4">Sejam Bem-Vindos as 20Torres XNivel Kleromanto.</h2>
+          <p className="text-gray-400 max-w-2xl mx-auto">
+            Tropas a contagem regressiva começou. Verifiquem o programa, confirma a tua presença com mais duas gajas, deia um palpite sobre o menu e prepara-te para reviver os mais de 35 anos de convivencia e histórias no dia 27 de Dezembro, e mais, com a saudosa homenagem ao kota Impitígo aKa Man-Barras.
+          </p>
         </div>
       )}
+
+      {/* Self-service (enabled for everyone): RSVP + payment proof */}
+      <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-2xl">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-black/30 border border-neutral-800 rounded-xl p-6">
+            <h3 className="font-bold text-white mb-3">Minha Presença</h3>
+            <p className="text-sm text-gray-400 mb-4">Confirma ou recusa a tua presença. Isto fica registado nos Traços com timestamp.</p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => handleMyStatus('confirmed')}>Confirmar</Button>
+              <Button variant="secondary" onClick={() => handleMyStatus('declined')}>Recusar</Button>
+              <Button variant="ghost" onClick={() => handleMyStatus('pending')}>Pendente</Button>
+            </div>
+            {!myGuest && (
+              <p className="text-xs text-yellow-500 mt-3">
+                Nota: o teu registo de convidado ainda não foi encontrado — tenta sair e entrar novamente.
+              </p>
+            )}
+          </div>
+
+          <div className="bg-black/30 border border-neutral-800 rounded-xl p-6">
+            <h3 className="font-bold text-white mb-3">Comprovativo de Pagamento</h3>
+            <p className="text-sm text-gray-400 mb-4">Carrega uma imagem ou PDF do comprovativo. Isto alimenta o estado geral de caixa.</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div className="sm:col-span-1">
+                <label className="block text-xs text-gray-500 mb-1">Valor (AOA)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-white outline-none focus:ring-1 focus:ring-red-600"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={(e) => setSelectedProof(e.target.files?.[0] ?? null)}
+                />
+                <div className="flex gap-2">
+                  <Button variant="secondary" className="flex-1" onClick={() => fileInputRef.current?.click()}>
+                    <Upload size={18} /> Selecionar ficheiro
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={handleUploadProof}
+                    disabled={!selectedProof || isUploadingProof || !myGuest}
+                    isLoading={isUploadingProof}
+                  >
+                    <FileText size={18} /> Enviar
+                  </Button>
+                </div>
+                {selectedProof && (
+                  <p className="text-xs text-gray-500 mt-2 truncate">Selecionado: {selectedProof.name}</p>
+                )}
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <Button variant="ghost" className="text-red-400 hover:text-red-300" onClick={handleMyNoPay}>
+                    Marcar como não pago (por agora)
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {myProofs.length > 0 && (
+              <p className="text-xs text-gray-500 mt-4">
+                Já tens {myProofs.length} comprovativo(s) carregado(s).
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
 
       {isAdminAny && (
         <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl">
