@@ -43,6 +43,10 @@ export type Proof = {
   uploadedAt?: number;
 };
 
+export type PublicConfig = {
+  googleClientId: string;
+};
+
 export type Trace = {
   id: string;
   userId: string;
@@ -104,6 +108,10 @@ export async function authWithGoogleCredential(credential: string) {
   });
   setSessionToken(data.token);
   return data.user;
+}
+
+export async function getPublicConfig() {
+  return apiFetch<PublicConfig>('/api/config');
 }
 
 export async function getMe() {

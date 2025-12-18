@@ -90,3 +90,12 @@ export interface PartyEvent {
   description: string;
   location: string;
 }
+
+// Vite type augmentation for `import.meta.env`.
+interface ImportMetaEnv {
+  readonly VITE_GOOGLE_CLIENT_ID?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
