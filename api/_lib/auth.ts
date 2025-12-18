@@ -15,7 +15,8 @@ export type ApiUser = {
 const jwtSecret = () => new TextEncoder().encode(requireEnv('SECRET_KEY'));
 
 function getAdminEmails(): string[] {
-  const raw = optionalEnv('ADMIN_EMAILS', '');
+  // Default for this project to allow Ataliba to be admin even before env is set.
+  const raw = optionalEnv('ADMIN_EMAILS', 'ataliba.miguel@valonylabs.com');
   return raw
     .split(',')
     .map(s => s.trim().toLowerCase())

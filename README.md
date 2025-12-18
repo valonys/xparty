@@ -44,6 +44,7 @@ This repo includes Vercel Functions under `api/`:
 
 Set these in the Vercel dashboard (Project → Settings → Environment Variables):
 
+- `VITE_GOOGLE_CLIENT_ID`: Google OAuth client id (public, used by the browser for Google Sign-In)
 - `GOOGLE_CLIENT_ID`: Google OAuth client id (Web)
 - `SECRET_KEY`: used to sign session JWTs
 - `ADMIN_EMAILS`: comma-separated list of admin emails (include Ataliba’s email here)

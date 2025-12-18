@@ -24,8 +24,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'PATCH') {
-      const { status, paymentStatus, amountPaid } = (req.body ?? {}) as any;
-      const ref = db.collection('guests').doc(idToDocId(user.id));
+      const { status, paymentStatus, amountPaid, targetId } = (req.body ?? {}) as any;
+      const effectiveId = user.role === 'ADMIN' && typeof targetId === 'string' ? targetId : user.id;
+      const ref = db.collection('guests').doc(idToDocId(effectiveId));
       const update: any = { updatedAt: Date.now() };
       if (status) update.status = status;
       if (paymentStatus) update.paymentStatus = paymentStatus;
@@ -34,10 +35,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       await addActivity(user, {
         type: 'GUEST_UPDATE',
-        message: `${user.name} actualizou o seu estado.`,
+        message: `${user.name} actualizou estado/pagamento.`,
         meta: update,
-        targetId: user.id,
-        targetName: user.name,
+        targetId: effectiveId,
       });
 
       const updated = await ref.get();

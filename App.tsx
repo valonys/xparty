@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from './types';
-import { mockBackend } from './services/mockBackend';
+import { authWithGoogleCredential, clearSessionToken, getMe } from './services/api';
 import { Logo } from './components/Logo';
 import { Button } from './components/Button';
 import { LayoutDashboard, Users, MessageSquare, Calendar, LogOut, CheckCircle } from 'lucide-react';
@@ -8,41 +8,41 @@ import { Dashboard } from './components/Dashboard';
 import { GuestList } from './components/GuestList';
 import { Memories } from './components/Memories';
 import { Program } from './components/Program';
+import { GoogleSignInButton } from './components/GoogleSignInButton';
 
 type ViewState = 'dashboard' | 'guests' | 'memories' | 'program';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [userIdInput, setUserIdInput] = useState('');
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   const [isAnimating, setIsAnimating] = useState(false);
 
   // Check for existing session
   useEffect(() => {
-    const savedId = localStorage.getItem('nivelx_session_user');
-    if (savedId) {
-      const u = mockBackend.login(savedId);
-      if (u) setUser(u);
-    }
+    (async () => {
+      try {
+        const me = await getMe();
+        setUser({ id: me.id, name: me.name, email: me.email, role: me.role === 'ADMIN' ? UserRole.ADMIN : UserRole.GUEST });
+      } catch {
+        // Not logged in
+        setUser(null);
+      }
+    })();
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userIdInput.trim()) return;
-    
+  const handleGoogleCredential = async (credential: string) => {
     setIsAnimating(true);
-    setTimeout(() => {
-        const loggedInUser = mockBackend.login(userIdInput);
-        if (loggedInUser) {
-        setUser(loggedInUser);
-        localStorage.setItem('nivelx_session_user', loggedInUser.id);
-        }
-        setIsAnimating(false);
-    }, 800);
+    try {
+      const u = await authWithGoogleCredential(credential);
+      setUser({ id: u.id, name: u.name, email: u.email, role: u.role === 'ADMIN' ? UserRole.ADMIN : UserRole.GUEST });
+      setCurrentView('dashboard');
+    } finally {
+      setIsAnimating(false);
+    }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('nivelx_session_user');
+    clearSessionToken();
     setUser(null);
     setCurrentView('dashboard');
   };
@@ -67,24 +67,13 @@ export default function App() {
             <p className="text-gray-400 tracking-wide uppercase text-sm">25 Anos de Irmandade</p>
           </div>
 
-          <form onSubmit={handleLogin} className="w-full max-w-sm space-y-4 bg-neutral-900/50 backdrop-blur-md p-8 rounded-2xl border border-neutral-800 shadow-2xl">
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">ID de Acesso / Nome</label>
-              <input 
-                type="text" 
-                value={userIdInput}
-                onChange={(e) => setUserIdInput(e.target.value)}
-                className="w-full bg-black/50 border border-neutral-700 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all placeholder-gray-600"
-                placeholder="Insere o teu nome..."
-              />
-            </div>
-            <Button type="submit" className="w-full py-4 text-lg" disabled={isAnimating}>
-              Entrar na Festa
-            </Button>
+          <div className="w-full max-w-sm space-y-4 bg-neutral-900/50 backdrop-blur-md p-8 rounded-2xl border border-neutral-800 shadow-2xl">
+            <p className="text-xs text-center text-gray-500 uppercase tracking-wider">Entrar com Google</p>
+            <GoogleSignInButton onCredential={handleGoogleCredential} />
             <p className="text-xs text-center text-gray-600">
-               Protegido pela Lógica Multicaixa Express
+               Sessão segura via Google · Ataliba tem acesso Admin
             </p>
-          </form>
+          </div>
         </div>
       </div>
     );
