@@ -13,10 +13,7 @@ export default defineConfig(() => ({
     strictPort: false,
   },
   plugins: [react()],
-  // NOTE: Avoid reading `.env*` files in this sandbox (they're blocked); use real environment variables instead.
-  define: {
-    __GEMINI_API_KEY__: JSON.stringify(process.env.GEMINI_API_KEY ?? process.env.VITE_GEMINI_API_KEY ?? ''),
-  },
+  // No secrets should be injected client-side. Gemini calls should go through serverless `/api/*` routes.
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '.'),
