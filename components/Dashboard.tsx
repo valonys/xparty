@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { PaymentProof, User, UserRole } from '../types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, GuestData, PaymentProof, User, UserRole } from '../types';
 import { mockBackend } from '../services/mockBackend';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, Tooltip } from 'recharts';
 import { Wallet, Users, CheckCircle2, Calendar, Upload, FileText } from 'lucide-react';
@@ -8,7 +8,9 @@ import { Button } from './Button';
 export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
   const isAdminFull = user.role === UserRole.ADMIN;
   const isAdminAny = isAdminFull || user.role === UserRole.ADMIN_VIEWER;
-  const guests = mockBackend.getGuests();
+  const [guests, setGuests] = useState<GuestData[]>(() => mockBackend.getGuests());
+  const [allProofs, setAllProofs] = useState<PaymentProof[]>(() => mockBackend.getPaymentProofs());
+  const [activities, setActivities] = useState<Activity[]>(() => mockBackend.getActivities());
   const myGuest = guests.find(g => g.id === user.id);
 
   const [paymentAmount, setPaymentAmount] = useState<number>(25000);
@@ -16,8 +18,35 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
   const [isUploadingProof, setIsUploadingProof] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const allProofs = useMemo(() => mockBackend.getPaymentProofs(), []);
-  const myProofs = useMemo(() => mockBackend.getPaymentProofsForGuest(user.id), [user.id]);
+  const myProofs = useMemo(() => allProofs.filter(p => p.guestId === user.id), [allProofs, user.id]);
+  const myActivities = useMemo(
+    () => activities.filter(a => a.actorUserId === user.id || a.targetGuestId === user.id).slice(0, 10),
+    [activities, user.id]
+  );
+
+  useEffect(() => {
+    const refresh = () => {
+      setGuests(mockBackend.getGuests());
+      setAllProofs(mockBackend.getPaymentProofs());
+      setActivities(mockBackend.getActivities());
+    };
+
+    // Same-tab updates
+    const onDbUpdated = () => refresh();
+    window.addEventListener('nivelx_db_updated', onDbUpdated as any);
+
+    // Cross-tab updates
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key) return;
+      if (e.key.startsWith('nivelx_')) refresh();
+    };
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      window.removeEventListener('nivelx_db_updated', onDbUpdated as any);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
 
   const stats = useMemo(() => {
     const totalDue = guests.reduce((acc, curr) => acc + curr.totalDue, 0);
@@ -25,8 +54,11 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
     const paidCount = guests.filter(g => g.paymentStatus === 'paid').length;
     const pendingCount = guests.filter(g => g.paymentStatus === 'partial').length;
     const unpaidCount = guests.filter(g => g.paymentStatus === 'unpaid').length;
+    const confirmedCount = guests.filter(g => g.status === 'confirmed').length;
+    const declinedCount = guests.filter(g => g.status === 'declined').length;
+    const statusPendingCount = guests.filter(g => g.status === 'pending').length;
     
-    return { totalDue, totalPaid, paidCount, pendingCount, unpaidCount };
+    return { totalDue, totalPaid, paidCount, pendingCount, unpaidCount, confirmedCount, declinedCount, statusPendingCount };
   }, [guests]);
 
   const pieData = [
@@ -54,6 +86,7 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
   const handleUploadProof = async () => {
     if (!selectedProof) return;
     if (!myGuest) return;
+    if (myGuest.status !== 'confirmed') return;
 
     setIsUploadingProof(true);
     try {
@@ -144,8 +177,11 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
           <p className="text-3xl font-bold text-white">
             {guests.length} <span className="text-lg font-normal text-gray-500">Kambas</span>
           </p>
-          <div className="flex gap-2 mt-4">
+          <div className="flex flex-wrap gap-2 mt-4">
              {stats.paidCount > 0 && <span className="px-2 py-1 bg-green-900/30 text-green-400 text-xs rounded border border-green-900/50 flex items-center gap-1"><CheckCircle2 size={10}/> {stats.paidCount} Pagos</span>}
+             <span className="px-2 py-1 bg-green-900/20 text-green-300 text-xs rounded border border-green-900/40">Confirmados: {stats.confirmedCount}</span>
+             <span className="px-2 py-1 bg-red-900/20 text-red-300 text-xs rounded border border-red-900/40">Recusados: {stats.declinedCount}</span>
+             <span className="px-2 py-1 bg-yellow-900/20 text-yellow-300 text-xs rounded border border-yellow-900/40">Pendentes: {stats.statusPendingCount}</span>
           </div>
         </div>
 
@@ -251,6 +287,11 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
           <div className="bg-black/30 border border-neutral-800 rounded-xl p-6">
             <h3 className="font-bold text-white mb-3">Comprovativo de Pagamento</h3>
             <p className="text-sm text-gray-400 mb-4">Carrega uma imagem ou PDF do comprovativo. Isto alimenta o estado geral de caixa.</p>
+            {myGuest?.status !== 'confirmed' && (
+              <p className="text-xs text-yellow-500 mb-4">
+                Só podes carregar comprovativo depois de estares <span className="font-semibold">Confirmado</span>.
+              </p>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
               <div className="sm:col-span-1">
@@ -279,7 +320,7 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
                   <Button
                     className="flex-1"
                     onClick={handleUploadProof}
-                    disabled={!selectedProof || isUploadingProof || !myGuest}
+                    disabled={!selectedProof || isUploadingProof || !myGuest || myGuest.status !== 'confirmed'}
                     isLoading={isUploadingProof}
                   >
                     <FileText size={18} /> Enviar
@@ -297,11 +338,42 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
             </div>
 
             {myProofs.length > 0 && (
-              <p className="text-xs text-gray-500 mt-4">
-                Já tens {myProofs.length} comprovativo(s) carregado(s).
-              </p>
+              <div className="mt-4">
+                <p className="text-xs text-gray-500 mb-2">Os meus comprovativos ({myProofs.length})</p>
+                <div className="space-y-2">
+                  {myProofs.slice(0, 5).map(p => (
+                    <div key={p.id} className="flex items-center justify-between gap-3 bg-neutral-900/40 border border-neutral-800 rounded-lg p-3">
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-300 truncate">
+                          {p.fileName}{typeof p.amount === 'number' ? ` (${p.amount.toLocaleString()} AOA)` : ''}
+                        </p>
+                        <p className="text-[10px] text-gray-600">{new Date(p.timestamp).toLocaleString('pt-PT')}</p>
+                      </div>
+                      <a className="text-xs text-red-400 hover:text-red-300 underline" href={p.dataUrl} download={p.fileName}>
+                        Download
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
+        </div>
+
+        <div className="mt-6 border-t border-neutral-800 pt-6">
+          <h3 className="font-bold text-white mb-3">Minha Actividade</h3>
+          {myActivities.length === 0 ? (
+            <p className="text-sm text-gray-500">Ainda sem actividade registada.</p>
+          ) : (
+            <div className="space-y-2">
+              {myActivities.map(a => (
+                <div key={a.id} className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                  <p className="text-sm text-gray-300">{a.message}</p>
+                  <p className="text-[10px] text-gray-600">{new Date(a.timestamp).toLocaleString('pt-PT')}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -341,6 +413,27 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
 
           {!isAdminFull && (
             <p className="text-[10px] text-gray-600 mt-3">Jado: modo visualização (sem edições).</p>
+          )}
+        </div>
+      )}
+
+      {isAdminAny && (
+        <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h3 className="font-bold text-white">Actividade Geral (últimas)</h3>
+            <span className="text-xs text-gray-500">{activities.length} total</span>
+          </div>
+          {activities.length === 0 ? (
+            <p className="text-sm text-gray-500">Sem actividade ainda.</p>
+          ) : (
+            <div className="space-y-2">
+              {activities.slice(0, 10).map(a => (
+                <div key={a.id} className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                  <p className="text-sm text-gray-300">{a.message}</p>
+                  <p className="text-[10px] text-gray-600">{new Date(a.timestamp).toLocaleString('pt-PT')}</p>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

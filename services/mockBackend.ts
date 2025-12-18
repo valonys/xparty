@@ -1,4 +1,4 @@
-import { GuestData, PaymentProof, Trace, User, UserRole } from '../types';
+import { Activity, DbUser, GuestData, PaymentProof, Trace, User, UserRole } from '../types';
 
 // Initial Mock Data
 const INITIAL_GUESTS: GuestData[] = [
@@ -21,6 +21,11 @@ const INITIAL_TRACES: Trace[] = [
 ];
 
 const INITIAL_PAYMENT_PROOFS: PaymentProof[] = [];
+const INITIAL_USERS: DbUser[] = [
+  { id: 'ataliba', name: 'Ataliba', role: UserRole.ADMIN, createdAt: Date.now(), lastActiveAt: Date.now() },
+  { id: 'jado', name: 'Jado', role: UserRole.ADMIN_VIEWER, createdAt: Date.now(), lastActiveAt: Date.now() },
+];
+const INITIAL_ACTIVITIES: Activity[] = [];
 
 // Service Class
 class MockBackendService {
@@ -35,10 +40,24 @@ class MockBackendService {
 
   private setStorage(key: string, data: any) {
     localStorage.setItem(key, JSON.stringify(data));
+    // Notify UI (same tab) that DB changed. Cross-tab sync comes from the `storage` event.
+    window.dispatchEvent(new CustomEvent('nivelx_db_updated', { detail: { key } }));
   }
 
   private createId(prefix: string) {
     return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  }
+
+  private addActivity(activity: Omit<Activity, 'id' | 'timestamp'> & { id?: string; timestamp?: number }) {
+    const normalized: Activity = {
+      ...activity,
+      id: activity.id ?? this.createId('act'),
+      timestamp: activity.timestamp ?? Date.now(),
+    };
+    const current = this.getActivities();
+    const updated = [normalized, ...current];
+    this.setStorage('nivelx_activities', updated);
+    return updated;
   }
 
   private logTrace(actor: User, content: string) {
@@ -71,6 +90,30 @@ class MockBackendService {
     return newGuest;
   }
 
+  getUsers(): DbUser[] {
+    return this.getStorage('nivelx_users', INITIAL_USERS);
+  }
+
+  upsertUser(user: Pick<DbUser, 'id' | 'name' | 'role'>) {
+    const current = this.getUsers();
+    const now = Date.now();
+    const existing = current.find(u => u.id === user.id);
+    const next: DbUser = existing
+      ? { ...existing, name: user.name, role: user.role, lastActiveAt: now }
+      : { ...user, createdAt: now, lastActiveAt: now };
+    const updated = [next, ...current.filter(u => u.id !== user.id)];
+    this.setStorage('nivelx_users', updated);
+    return next;
+  }
+
+  getActivities(): Activity[] {
+    return this.getStorage('nivelx_activities', INITIAL_ACTIVITIES);
+  }
+
+  getActivitiesForUser(userId: string): Activity[] {
+    return this.getActivities().filter(a => a.actorUserId === userId || a.targetGuestId === userId);
+  }
+
   login(userId: string): User | null {
     // Simulating login. 
     // 'admin' gives full access.
@@ -79,11 +122,15 @@ class MockBackendService {
     if (normalized === 'admin' || normalized === 'ataliba') {
       const user = { id: 'ataliba', name: 'Ataliba', role: UserRole.ADMIN } as User;
       this.ensureGuestRecord(user.id, user.name);
+      this.upsertUser({ id: user.id, name: user.name, role: user.role });
+      this.addActivity({ type: 'LOGIN', actorUserId: user.id, actorUserName: user.name, message: `${user.name} iniciou sessão.` });
       return user;
     }
     if (normalized === 'jado') {
       const user = { id: 'jado', name: 'Jado', role: UserRole.ADMIN_VIEWER } as User;
       this.ensureGuestRecord(user.id, user.name);
+      this.upsertUser({ id: user.id, name: user.name, role: user.role });
+      this.addActivity({ type: 'LOGIN', actorUserId: user.id, actorUserName: user.name, message: `${user.name} iniciou sessão.` });
       return user;
     }
 
@@ -92,7 +139,10 @@ class MockBackendService {
     const guest = guests.find(g => g.name.toLowerCase().includes(userId.toLowerCase()) || g.id === userId);
 
     if (guest) {
-      return { id: guest.id, name: guest.name, role: UserRole.GUEST };
+      const user = { id: guest.id, name: guest.name, role: UserRole.GUEST } as User;
+      this.upsertUser({ id: user.id, name: user.name, role: user.role });
+      this.addActivity({ type: 'LOGIN', actorUserId: user.id, actorUserName: user.name, message: `${user.name} iniciou sessão.` });
+      return user;
     }
 
     // Default fallthrough for new users (Guests): create a guest entry so they appear in lists.
@@ -109,7 +159,10 @@ class MockBackendService {
     };
     const updatedGuests = [newGuest, ...guests];
     this.setStorage('nivelx_guests', updatedGuests);
-    return { id: newGuest.id, name: newGuest.name, role: UserRole.GUEST };
+    const user = { id: newGuest.id, name: newGuest.name, role: UserRole.GUEST } as User;
+    this.upsertUser({ id: user.id, name: user.name, role: user.role });
+    this.addActivity({ type: 'LOGIN', actorUserId: user.id, actorUserName: user.name, message: `${user.name} iniciou sessão.` });
+    return user;
   }
 
   getGuests(): GuestData[] {
@@ -133,6 +186,16 @@ class MockBackendService {
     const current = this.getPaymentProofs();
     const updated = [normalized, ...current];
     this.setStorage('nivelx_payment_proofs', updated);
+    this.addActivity({
+      type: 'PAYMENT_PROOF_UPLOAD',
+      actorUserId: normalized.uploadedByUserId,
+      actorUserName: normalized.uploadedByUserName,
+      targetGuestId: normalized.guestId,
+      targetGuestName: normalized.guestName,
+      message: `${normalized.uploadedByUserName} carregou um comprovativo (${normalized.fileName}) para ${normalized.guestName}.`,
+      meta: { proofId: normalized.id, amount: normalized.amount, mimeType: normalized.mimeType },
+      timestamp: normalized.timestamp,
+    });
     return updated;
   }
 
@@ -156,6 +219,15 @@ class MockBackendService {
         actor,
         `Registo financeiro: ${actor.name} registou um pagamento de ${amount.toLocaleString()} AOA para ${changedGuest.name}. Total pago: ${changedGuest.amountPaid.toLocaleString()} AOA. Estado: ${changedGuest.paymentStatus}.`
       );
+      this.addActivity({
+        type: 'PAYMENT_UPDATE',
+        actorUserId: actor.id,
+        actorUserName: actor.name,
+        targetGuestId: changedGuest.id,
+        targetGuestName: changedGuest.name,
+        message: `${actor.name} registou pagamento de ${amount.toLocaleString()} AOA para ${changedGuest.name}.`,
+        meta: { amount, totalPaid: changedGuest.amountPaid, paymentStatus: changedGuest.paymentStatus },
+      });
     }
 
     return updated;
@@ -174,6 +246,14 @@ class MockBackendService {
     this.setStorage('nivelx_guests', updated);
     if (changedGuest) {
       this.logTrace(actor, `Registo financeiro: ${actor.name} marcou "${changedGuest.name}" como não vai pagar (por agora).`);
+      this.addActivity({
+        type: 'PAYMENT_NO_PAY',
+        actorUserId: actor.id,
+        actorUserName: actor.name,
+        targetGuestId: changedGuest.id,
+        targetGuestName: changedGuest.name,
+        message: `${actor.name} marcou ${changedGuest.name} como não paga (por agora).`,
+      });
     }
     return updated;
   }
@@ -197,6 +277,15 @@ class MockBackendService {
         actor,
         `Presença: ${actor.name} alterou o estado de "${changedGuest.name}" de ${previous.status} para ${changedGuest.status}.`
       );
+      this.addActivity({
+        type: 'RSVP_UPDATE',
+        actorUserId: actor.id,
+        actorUserName: actor.name,
+        targetGuestId: changedGuest.id,
+        targetGuestName: changedGuest.name,
+        message: `${actor.name} alterou o estado de ${changedGuest.name}: ${previous.status} → ${changedGuest.status}.`,
+        meta: { from: previous.status, to: changedGuest.status },
+      });
     }
     return updated;
   }

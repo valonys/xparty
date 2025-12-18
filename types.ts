@@ -46,6 +46,36 @@ export interface PaymentProof {
   amount?: number; // optional amount claimed for this proof
 }
 
+export interface DbUser {
+  id: string;
+  name: string;
+  role: UserRole;
+  createdAt: number;
+  lastActiveAt: number;
+}
+
+export type ActivityType =
+  | 'LOGIN'
+  | 'RSVP_UPDATE'
+  | 'PAYMENT_UPDATE'
+  | 'PAYMENT_NO_PAY'
+  | 'PAYMENT_PROOF_UPLOAD'
+  | 'TRACE_POST';
+
+export interface Activity {
+  id: string;
+  type: ActivityType;
+  actorUserId: string;
+  actorUserName: string;
+  timestamp: number;
+  // Optional "target" (guest being updated)
+  targetGuestId?: string;
+  targetGuestName?: string;
+  // Free-form payload for UI display/debugging
+  message: string;
+  meta?: Record<string, any>;
+}
+
 export interface MenuItem {
   id: string;
   category: 'food' | 'drink' | 'dessert';
