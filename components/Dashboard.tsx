@@ -1,6 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, GuestData, PaymentProof, User, UserRole } from '../types';
-import { mockBackend } from '../services/mockBackend';
+import { User, UserRole } from '../types';
+import {
+  Activity,
+  Guest,
+  Kpis,
+  Proof,
+  confirmProof,
+  createProofUploadUrl,
+  getActivities,
+  getGuests,
+  getKpis,
+  getProofDownloadUrl,
+  getProofs,
+  patchMyGuest,
+  uploadToSignedUrl,
+} from '../services/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, Tooltip } from 'recharts';
 import { Wallet, Users, CheckCircle2, Calendar, Upload, FileText } from 'lucide-react';
 import { Button } from './Button';
@@ -8,59 +22,54 @@ import { Button } from './Button';
 export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
   const isAdminFull = user.role === UserRole.ADMIN;
   const isAdminAny = isAdminFull || user.role === UserRole.ADMIN_VIEWER;
-  const [guests, setGuests] = useState<GuestData[]>(() => mockBackend.getGuests());
-  const [allProofs, setAllProofs] = useState<PaymentProof[]>(() => mockBackend.getPaymentProofs());
-  const [activities, setActivities] = useState<Activity[]>(() => mockBackend.getActivities());
+  const [myGuest, setMyGuest] = useState<Guest | null>(null);
+  const [kpis, setKpis] = useState<Kpis | null>(null);
+  const [proofs, setProofs] = useState<Proof[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
-  const myGuest = guests.find(g => g.id === user.id);
 
   const [paymentAmount, setPaymentAmount] = useState<number>(25000);
   const [selectedProof, setSelectedProof] = useState<File | null>(null);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const myProofs = useMemo(() => allProofs.filter(p => p.guestId === user.id), [allProofs, user.id]);
+  const myProofs = useMemo(() => proofs.filter(p => p.ownerId === user.id), [proofs, user.id]);
   const myActivities = useMemo(
-    () => activities.filter(a => a.actorUserId === user.id || a.targetGuestId === user.id).slice(0, 10),
+    () => activities.filter(a => a.actorId === user.id || a.targetId === user.id).slice(0, 10),
     [activities, user.id]
   );
 
   useEffect(() => {
-    const refresh = () => {
-      setGuests(mockBackend.getGuests());
-      setAllProofs(mockBackend.getPaymentProofs());
-      setActivities(mockBackend.getActivities());
+    const refresh = async () => {
+      const [{ kpis }, acts, prs, gs] = await Promise.all([
+        getKpis(),
+        getActivities(),
+        getProofs(),
+        getGuests(),
+      ]);
+      setKpis(kpis);
+      setActivities(acts.activities);
+      setProofs(prs.proofs);
+      if (gs.guest) setMyGuest(gs.guest);
+      if (gs.guests) setMyGuest(gs.guests.find(g => g.id === user.id) ?? null);
     };
 
-    // Same-tab updates
-    const onDbUpdated = () => refresh();
-    window.addEventListener('nivelx_db_updated', onDbUpdated as any);
-
-    // Cross-tab updates
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.startsWith('nivelx_')) refresh();
-    };
-    window.addEventListener('storage', onStorage);
-
-    return () => {
-      window.removeEventListener('nivelx_db_updated', onDbUpdated as any);
-      window.removeEventListener('storage', onStorage);
-    };
+    refresh();
   }, []);
 
   const stats = useMemo(() => {
-    const totalDue = guests.reduce((acc, curr) => acc + curr.totalDue, 0);
-    const totalPaid = guests.reduce((acc, curr) => acc + curr.amountPaid, 0);
-    const paidCount = guests.filter(g => g.paymentStatus === 'paid').length;
-    const pendingCount = guests.filter(g => g.paymentStatus === 'partial').length;
-    const unpaidCount = guests.filter(g => g.paymentStatus === 'unpaid').length;
-    const confirmedCount = guests.filter(g => g.status === 'confirmed').length;
-    const declinedCount = guests.filter(g => g.status === 'declined').length;
-    const statusPendingCount = guests.filter(g => g.status === 'pending').length;
-    
-    return { totalDue, totalPaid, paidCount, pendingCount, unpaidCount, confirmedCount, declinedCount, statusPendingCount };
-  }, [guests]);
+    return {
+      totalDue: kpis?.totalDue ?? 0,
+      totalPaid: kpis?.totalPaid ?? 0,
+      paidCount: kpis?.paidCount ?? 0,
+      pendingCount: kpis?.partialCount ?? 0,
+      unpaidCount: kpis?.unpaidCount ?? 0,
+      confirmedCount: kpis?.confirmedCount ?? 0,
+      declinedCount: kpis?.declinedCount ?? 0,
+      statusPendingCount: kpis?.pendingCount ?? 0,
+      totalGuests: kpis?.totalGuests ?? 0,
+    };
+  }, [kpis]);
 
   const pieData = [
     { name: 'Pago', value: stats.paidCount, color: '#dc2626' }, // Red-600
@@ -77,11 +86,25 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
   }, []);
 
   const handleMyStatus = (status: 'confirmed' | 'declined' | 'pending') => {
-    mockBackend.updateGuestStatus(user.id, status, user);
+    patchMyGuest({ status }).then(async () => {
+      const gs = await getGuests();
+      if (gs.guest) setMyGuest(gs.guest);
+      const { kpis } = await getKpis();
+      setKpis(kpis);
+      const acts = await getActivities();
+      setActivities(acts.activities);
+    });
   };
 
   const handleMyNoPay = () => {
-    mockBackend.setGuestPaymentNoPay(user.id, user);
+    patchMyGuest({ paymentStatus: 'unpaid' }).then(async () => {
+      const gs = await getGuests();
+      if (gs.guest) setMyGuest(gs.guest);
+      const { kpis } = await getKpis();
+      setKpis(kpis);
+      const acts = await getActivities();
+      setActivities(acts.activities);
+    });
   };
 
   const handleUploadProof = async () => {
@@ -91,43 +114,38 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
 
     setIsUploadingProof(true);
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error('Falha ao ler ficheiro.'));
-        reader.readAsDataURL(selectedProof);
-      });
-
-      // Store proof in "light DB"
-      mockBackend.addPaymentProof({
-        guestId: myGuest.id,
-        guestName: myGuest.name,
-        uploadedByUserId: user.id,
-        uploadedByUserName: user.name,
+      const { uploadUrl, proofId } = await createProofUploadUrl({
         fileName: selectedProof.name,
         mimeType: selectedProof.type || 'application/octet-stream',
-        dataUrl,
         amount: Number.isFinite(paymentAmount) ? paymentAmount : undefined,
       });
+      await uploadToSignedUrl(uploadUrl, selectedProof);
+      await confirmProof(proofId);
 
-      // Register payment (optional) + trace log
-      if (paymentAmount && paymentAmount > 0) {
-        mockBackend.updateGuestPayment(myGuest.id, paymentAmount, user);
-      } else {
-        mockBackend.addTrace({
-          id: Date.now().toString(),
-          userId: user.id,
-          userName: user.name,
-          content: `Comprovativo: ${user.name} carregou um comprovativo de pagamento para "${myGuest.name}" (${selectedProof.name}).`,
-          timestamp: Date.now(),
-        });
-      }
+      // Update guest payment totals (server stores guest record; we calculate next values client-side for now)
+      const newAmountPaid = (myGuest.amountPaid ?? 0) + (paymentAmount > 0 ? paymentAmount : 0);
+      const paymentStatus: Guest['paymentStatus'] =
+        newAmountPaid >= myGuest.totalDue ? 'paid' : newAmountPaid > 0 ? 'partial' : 'unpaid';
+      await patchMyGuest({ amountPaid: newAmountPaid, paymentStatus });
 
       setSelectedProof(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      const prs = await getProofs();
+      setProofs(prs.proofs);
+      const gs = await getGuests();
+      if (gs.guest) setMyGuest(gs.guest);
+      const { kpis } = await getKpis();
+      setKpis(kpis);
+      const acts = await getActivities();
+      setActivities(acts.activities);
     } finally {
       setIsUploadingProof(false);
     }
+  };
+
+  const handleDownloadProof = async (proofId: string) => {
+    const { downloadUrl } = await getProofDownloadUrl(proofId);
+    window.open(downloadUrl, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -176,7 +194,7 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
             <h3 className="font-bold uppercase tracking-wider text-xs">X-Cleroarianos</h3>
           </div>
           <p className="text-3xl font-bold text-white">
-            {guests.length} <span className="text-lg font-normal text-gray-500">Kambas</span>
+            {stats.totalGuests} <span className="text-lg font-normal text-gray-500">Kambas</span>
           </p>
           <div className="flex flex-wrap gap-2 mt-4">
              {stats.paidCount > 0 && <span className="px-2 py-1 bg-green-900/30 text-green-400 text-xs rounded border border-green-900/50 flex items-center gap-1"><CheckCircle2 size={10}/> {stats.paidCount} Pagos</span>}
@@ -348,11 +366,11 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
                         <p className="text-xs text-gray-300 truncate">
                           {p.fileName}{typeof p.amount === 'number' ? ` (${p.amount.toLocaleString()} AOA)` : ''}
                         </p>
-                        <p className="text-[10px] text-gray-600">{new Date(p.timestamp).toLocaleString('pt-PT')}</p>
+                        <p className="text-[10px] text-gray-600">{new Date(p.createdAt).toLocaleString('pt-PT')}</p>
                       </div>
-                      <a className="text-xs text-red-400 hover:text-red-300 underline" href={p.dataUrl} download={p.fileName}>
+                      <button className="text-xs text-red-400 hover:text-red-300 underline" onClick={() => handleDownloadProof(p.id)}>
                         Download
-                      </a>
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -382,31 +400,27 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
         <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl">
           <div className="flex items-center justify-between gap-4 mb-4">
             <h3 className="font-bold text-white">Comprovativos de Pagamento (últimos)</h3>
-            <span className="text-xs text-gray-500">{allProofs.length} total</span>
+            <span className="text-xs text-gray-500">{proofs.length} total</span>
           </div>
 
-          {allProofs.length === 0 ? (
+          {proofs.length === 0 ? (
             <p className="text-sm text-gray-500">Ainda não foram carregados comprovativos.</p>
           ) : (
             <div className="space-y-3">
-              {allProofs.slice(0, 5).map((p: PaymentProof) => (
+              {proofs.slice(0, 5).map((p: Proof) => (
                 <div key={p.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-black/30 border border-neutral-800 rounded-lg p-4">
                   <div className="min-w-0">
                     <p className="text-sm text-gray-200 truncate">
-                      <span className="font-semibold">{p.guestName}</span> — {p.fileName}
+                      <span className="font-semibold">{p.ownerName}</span> — {p.fileName}
                       {typeof p.amount === 'number' ? ` (${p.amount.toLocaleString()} AOA)` : ''}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {new Date(p.timestamp).toLocaleString('pt-PT')} · enviado por {p.uploadedByUserName}
+                      {new Date(p.createdAt).toLocaleString('pt-PT')} · {p.ownerEmail}
                     </p>
                   </div>
-                  <a
-                    className="text-xs text-red-400 hover:text-red-300 underline"
-                    href={p.dataUrl}
-                    download={p.fileName}
-                  >
+                  <button className="text-xs text-red-400 hover:text-red-300 underline" onClick={() => handleDownloadProof(p.id)}>
                     Download
-                  </a>
+                  </button>
                 </div>
               ))}
             </div>
@@ -440,8 +454,8 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
                       <p className="text-sm text-gray-200">{a.message}</p>
                       <p className="text-[10px] text-gray-600">
                         {new Date(a.timestamp).toLocaleString('pt-PT')}
-                        {a.actorUserName ? ` · por ${a.actorUserName}` : ''}
-                        {a.targetGuestName ? ` · alvo ${a.targetGuestName}` : ''}
+                        {a.actorName ? ` · por ${a.actorName}` : ''}
+                        {a.targetName ? ` · alvo ${a.targetName}` : ''}
                       </p>
                     </div>
                     <span className="text-[10px] text-gray-500 shrink-0">{a.type}</span>
@@ -449,9 +463,9 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
 
                   {expandedActivityId === a.id && (
                     <div className="mt-3 pt-3 border-t border-neutral-800 text-[11px] text-gray-400 space-y-1">
-                      <div><span className="text-gray-500">Actor:</span> {a.actorUserName} ({a.actorUserId})</div>
-                      {a.targetGuestId && (
-                        <div><span className="text-gray-500">Alvo:</span> {a.targetGuestName} ({a.targetGuestId})</div>
+                      <div><span className="text-gray-500">Actor:</span> {a.actorName} ({a.actorId})</div>
+                      {a.targetId && (
+                        <div><span className="text-gray-500">Alvo:</span> {a.targetName} ({a.targetId})</div>
                       )}
                       <div><span className="text-gray-500">Timestamp:</span> {new Date(a.timestamp).toISOString()}</div>
                       {a.meta && (

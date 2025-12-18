@@ -43,6 +43,20 @@ export type Proof = {
   uploadedAt?: number;
 };
 
+export type Trace = {
+  id: string;
+  userId: string;
+  userName: string;
+  content: string;
+  createdAt: number;
+  image?: {
+    fileName: string;
+    mimeType: string;
+    objectPath: string;
+    downloadUrl?: string;
+  } | null;
+};
+
 export type Kpis = {
   totalGuests: number;
   confirmedCount: number;
@@ -113,8 +127,19 @@ export async function getProofs() {
   return apiFetch<{ proofs: Proof[] }>('/api/proofs');
 }
 
+export async function getProofDownloadUrl(proofId: string) {
+  return apiFetch<{ downloadUrl: string }>('/api/proofs/download-url', {
+    method: 'POST',
+    body: JSON.stringify({ proofId }),
+  });
+}
+
 export async function getKpis() {
   return apiFetch<{ kpis: Kpis }>('/api/kpis');
+}
+
+export async function patchGuestAsAdmin(targetId: string, patch: Partial<Pick<Guest, 'status' | 'paymentStatus' | 'amountPaid'>>) {
+  return apiFetch<{ guest: Guest }>('/api/guests', { method: 'PATCH', body: JSON.stringify({ ...patch, targetId }) });
 }
 
 export async function createProofUploadUrl(args: { fileName: string; mimeType: string; amount?: number }) {
@@ -135,6 +160,24 @@ export async function uploadToSignedUrl(uploadUrl: string, file: File) {
 
 export async function confirmProof(proofId: string) {
   return apiFetch<{ proof: Proof }>('/api/proofs/confirm', { method: 'POST', body: JSON.stringify({ proofId }) });
+}
+
+export async function getTraces() {
+  return apiFetch<{ traces: Trace[] }>('/api/traces');
+}
+
+export async function createTraceImageUploadUrl(args: { fileName: string; mimeType: string }) {
+  return apiFetch<{ uploadUrl: string; objectPath: string }>('/api/traces/upload-url', {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+}
+
+export async function createTrace(args: { content: string; image?: { objectPath: string; fileName: string; mimeType: string } }) {
+  return apiFetch<{ trace: Trace }>('/api/traces', {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
 }
 
 

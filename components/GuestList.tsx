@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, GuestData, UserRole } from '../types';
-import { mockBackend } from '../services/mockBackend';
+import { getGuests, patchGuestAsAdmin } from '../services/api';
 import { Button } from './Button';
 import { Search, CreditCard, Check, X, ShieldAlert } from 'lucide-react';
 
@@ -11,23 +11,34 @@ export const GuestList: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const isAdminAny = isAdminFull || currentUser.role === UserRole.ADMIN_VIEWER;
 
   useEffect(() => {
-    setGuests(mockBackend.getGuests());
+    (async () => {
+      const res = await getGuests();
+      setGuests((res.guests as any) ?? []);
+    })();
   }, []);
 
   const handlePayment = (id: string) => {
-    // Simulate updating payment via Multicaixa Express logic (Mock)
-    const updated = mockBackend.updateGuestPayment(id, 25000, currentUser); // Add partial payment of 25k
-    setGuests(updated);
+    const g = guests.find(x => x.id === id);
+    if (!g) return;
+    const amount = 25000;
+    const newTotal = (g.amountPaid ?? 0) + amount;
+    const paymentStatus: GuestData['paymentStatus'] =
+      newTotal >= g.totalDue ? 'paid' : newTotal > 0 ? 'partial' : 'unpaid';
+    patchGuestAsAdmin(id, { amountPaid: newTotal, paymentStatus }).then(() => {
+      setGuests(prev => prev.map(x => (x.id === id ? { ...x, amountPaid: newTotal, paymentStatus } : x)));
+    });
   };
 
   const handleNoPay = (id: string) => {
-    const updated = mockBackend.setGuestPaymentNoPay(id, currentUser);
-    setGuests(updated);
+    patchGuestAsAdmin(id, { paymentStatus: 'unpaid' }).then(() => {
+      setGuests(prev => prev.map(x => (x.id === id ? { ...x, paymentStatus: 'unpaid' } : x)));
+    });
   };
 
   const handleStatus = (id: string, status: GuestData['status']) => {
-    const updated = mockBackend.updateGuestStatus(id, status, currentUser);
-    setGuests(updated);
+    patchGuestAsAdmin(id, { status }).then(() => {
+      setGuests(prev => prev.map(x => (x.id === id ? { ...x, status } : x)));
+    });
   };
 
   const filteredGuests = guests.filter(g => g.name.toLowerCase().includes(filter.toLowerCase()));

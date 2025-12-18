@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Trace } from '../types';
-import { mockBackend } from '../services/mockBackend';
+import { User } from '../types';
+import { createTrace, createTraceImageUploadUrl, getTraces, Trace, uploadToSignedUrl } from '../services/api';
 import { generateTraceEnhancement, analyzePartyPhoto } from '../services/geminiService';
 import { Button } from './Button';
 import { Send, Image as ImageIcon, Sparkles, Clock, Camera } from 'lucide-react';
@@ -10,11 +10,15 @@ export const Memories: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const [newTraceContent, setNewTraceContent] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setTraces(mockBackend.getTraces());
+    (async () => {
+      const res = await getTraces();
+      setTraces(res.traces);
+    })();
   }, []);
 
   const handleEnhance = async () => {
@@ -28,10 +32,11 @@ export const Memories: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setSelectedImageFile(file);
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64 = reader.result as string;
-        setSelectedImage(base64);
+        setSelectedImagePreview(base64);
         
         // Auto-generate caption for image
         setIsEnhancing(true);
@@ -48,25 +53,31 @@ export const Memories: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   };
 
   const handlePost = () => {
-    if (!newTraceContent && !selectedImage) return;
+    if (!newTraceContent && !selectedImageFile) return;
 
     setIsPosting(true);
-    const newTrace: Trace = {
-      id: Date.now().toString(),
-      userId: currentUser.id,
-      userName: currentUser.name,
-      content: newTraceContent,
-      timestamp: Date.now(),
-      imageUrl: selectedImage || undefined,
-    };
+    (async () => {
+      try {
+        let imagePayload: { objectPath: string; fileName: string; mimeType: string } | undefined;
+        if (selectedImageFile) {
+          const { uploadUrl, objectPath } = await createTraceImageUploadUrl({
+            fileName: selectedImageFile.name,
+            mimeType: selectedImageFile.type || 'application/octet-stream',
+          });
+          await uploadToSignedUrl(uploadUrl, selectedImageFile);
+          imagePayload = { objectPath, fileName: selectedImageFile.name, mimeType: selectedImageFile.type || 'application/octet-stream' };
+        }
 
-    setTimeout(() => { // Simulate network delay
-        const updated = mockBackend.addTrace(newTrace);
-        setTraces(updated);
+        await createTrace({ content: newTraceContent, image: imagePayload });
+        const refreshed = await getTraces();
+        setTraces(refreshed.traces);
         setNewTraceContent('');
-        setSelectedImage(null);
+        setSelectedImageFile(null);
+        setSelectedImagePreview(null);
+      } finally {
         setIsPosting(false);
-    }, 500);
+      }
+    })();
   };
 
   return (
@@ -85,15 +96,15 @@ export const Memories: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                     <div>
                         <h4 className="font-bold text-gray-200">{trace.userName}</h4>
                         <span className="text-xs text-gray-500 flex items-center gap-1">
-                          <Clock size={10}/> {new Date(trace.timestamp).toLocaleString('pt-PT')}
+                          <Clock size={10}/> {new Date(trace.createdAt).toLocaleString('pt-PT')}
                         </span>
                     </div>
                 </div>
               </div>
 
-              {trace.imageUrl && (
+              {trace.image?.downloadUrl && (
                   <div className="mb-4 rounded-xl overflow-hidden border border-neutral-800">
-                      <img src={trace.imageUrl} alt="Memory" className="w-full h-auto object-cover max-h-96" />
+                      <img src={trace.image.downloadUrl} alt="Memory" className="w-full h-auto object-cover max-h-96" />
                   </div>
               )}
 
@@ -120,11 +131,11 @@ export const Memories: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                onChange={(e) => setNewTraceContent(e.target.value)}
              />
              
-             {selectedImage && (
+             {selectedImagePreview && (
                  <div className="relative rounded-lg overflow-hidden border border-neutral-700">
-                     <img src={selectedImage} alt="Preview" className="w-full h-32 object-cover opacity-50" />
+                     <img src={selectedImagePreview ?? ''} alt="Preview" className="w-full h-32 object-cover opacity-50" />
                      <button 
-                        onClick={() => setSelectedImage(null)}
+                        onClick={() => { setSelectedImageFile(null); setSelectedImagePreview(null); }}
                         className="absolute top-1 right-1 bg-black/80 p-1 rounded-full text-white hover:text-red-500"
                      >
                          <div className="h-4 w-4 flex items-center justify-center font-bold">×</div>
@@ -157,7 +168,7 @@ export const Memories: React.FC<{ currentUser: User }> = ({ currentUser }) => {
              <Button 
                 className="w-full py-3" 
                 onClick={handlePost} 
-                disabled={isPosting || (!newTraceContent && !selectedImage)}
+                disabled={isPosting || (!newTraceContent && !selectedImageFile)}
                 isLoading={isPosting}
              >
                <Send size={18} /> Publicar Traço
