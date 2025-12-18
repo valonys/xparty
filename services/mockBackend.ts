@@ -1,29 +1,12 @@
 import { Activity, DbUser, GuestData, PaymentProof, Trace, User, UserRole } from '../types';
 
-// Initial Mock Data
-const INITIAL_GUESTS: GuestData[] = [
-  { id: '1', name: 'João Manuel', status: 'confirmed', paymentStatus: 'paid', amountPaid: 50000, totalDue: 50000, paymentMethod: 'multicaixa_express' },
-  { id: '2', name: 'Antonio Silva', status: 'pending', paymentStatus: 'partial', amountPaid: 25000, totalDue: 50000, paymentMethod: 'multicaixa_express' },
-  { id: '3', name: 'Carlos Pedro', status: 'confirmed', paymentStatus: 'paid', amountPaid: 50000, totalDue: 50000, paymentMethod: 'multicaixa_express' },
-  { id: '4', name: 'Miguel Costa', status: 'declined', paymentStatus: 'unpaid', amountPaid: 0, totalDue: 50000 },
-  { id: '5', name: 'Fernando Jose', status: 'confirmed', paymentStatus: 'unpaid', amountPaid: 0, totalDue: 50000 },
-];
-
-const INITIAL_TRACES: Trace[] = [
-  {
-    id: 't1',
-    userId: '1',
-    userName: 'João Manuel',
-    content: 'Lembram-se daquela vez em 1999 quando a luz foi abaixo por 3 dias? O melhor churrasco de sempre.',
-    timestamp: Date.now() - 10000000,
-    imageUrl: 'https://picsum.photos/400/300'
-  }
-];
+// No seed/demo data for production use: everything is created by real users.
+const INITIAL_GUESTS: GuestData[] = [];
+const INITIAL_TRACES: Trace[] = [];
 
 const INITIAL_PAYMENT_PROOFS: PaymentProof[] = [];
 const INITIAL_USERS: DbUser[] = [
   { id: 'ataliba', name: 'Ataliba', role: UserRole.ADMIN, createdAt: Date.now(), lastActiveAt: Date.now() },
-  { id: 'jado', name: 'Jado', role: UserRole.ADMIN_VIEWER, createdAt: Date.now(), lastActiveAt: Date.now() },
 ];
 const INITIAL_ACTIVITIES: Activity[] = [];
 
@@ -119,15 +102,8 @@ class MockBackendService {
     // 'admin' gives full access.
     
     const normalized = userId.trim().toLowerCase();
-    if (normalized === 'admin' || normalized === 'ataliba') {
+    if (normalized === 'ataliba') {
       const user = { id: 'ataliba', name: 'Ataliba', role: UserRole.ADMIN } as User;
-      this.ensureGuestRecord(user.id, user.name);
-      this.upsertUser({ id: user.id, name: user.name, role: user.role });
-      this.addActivity({ type: 'LOGIN', actorUserId: user.id, actorUserName: user.name, message: `${user.name} iniciou sessão.` });
-      return user;
-    }
-    if (normalized === 'jado') {
-      const user = { id: 'jado', name: 'Jado', role: UserRole.ADMIN_VIEWER } as User;
       this.ensureGuestRecord(user.id, user.name);
       this.upsertUser({ id: user.id, name: user.name, role: user.role });
       this.addActivity({ type: 'LOGIN', actorUserId: user.id, actorUserName: user.name, message: `${user.name} iniciou sessão.` });
@@ -136,7 +112,8 @@ class MockBackendService {
 
     // Check if ID matches a guest name
     const guests = this.getGuests();
-    const guest = guests.find(g => g.name.toLowerCase().includes(userId.toLowerCase()) || g.id === userId);
+    const safeName = userId.trim();
+    const guest = guests.find(g => g.id === userId || g.name.toLowerCase() === safeName.toLowerCase());
 
     if (guest) {
       const user = { id: guest.id, name: guest.name, role: UserRole.GUEST } as User;
@@ -146,7 +123,6 @@ class MockBackendService {
     }
 
     // Default fallthrough for new users (Guests): create a guest entry so they appear in lists.
-    const safeName = userId.trim();
     if (!safeName) return null;
     const newGuest: GuestData = {
       id: this.createId('guest'),

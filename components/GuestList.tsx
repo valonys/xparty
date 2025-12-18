@@ -143,7 +143,7 @@ export const GuestList: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                             )}
                           </div>
                           {!isAdminFull && (
-                            <p className="text-[10px] text-gray-600 mt-2">Jado: modo visualização (sem edições).</p>
+                            <p className="text-[10px] text-gray-600 mt-2">Modo visualização (sem edições).</p>
                           )}
                         </td>
                     </>

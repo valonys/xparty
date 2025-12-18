@@ -11,6 +11,7 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
   const [guests, setGuests] = useState<GuestData[]>(() => mockBackend.getGuests());
   const [allProofs, setAllProofs] = useState<PaymentProof[]>(() => mockBackend.getPaymentProofs());
   const [activities, setActivities] = useState<Activity[]>(() => mockBackend.getActivities());
+  const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
   const myGuest = guests.find(g => g.id === user.id);
 
   const [paymentAmount, setPaymentAmount] = useState<number>(25000);
@@ -412,7 +413,7 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
           )}
 
           {!isAdminFull && (
-            <p className="text-[10px] text-gray-600 mt-3">Jado: modo visualização (sem edições).</p>
+            <p className="text-[10px] text-gray-600 mt-3">Modo visualização (sem edições).</p>
           )}
         </div>
       )}
@@ -428,10 +429,39 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
           ) : (
             <div className="space-y-2">
               {activities.slice(0, 10).map(a => (
-                <div key={a.id} className="bg-black/30 border border-neutral-800 rounded-lg p-3">
-                  <p className="text-sm text-gray-300">{a.message}</p>
-                  <p className="text-[10px] text-gray-600">{new Date(a.timestamp).toLocaleString('pt-PT')}</p>
-                </div>
+                <button
+                  key={a.id}
+                  onClick={() => setExpandedActivityId(prev => (prev === a.id ? null : a.id))}
+                  className="w-full text-left bg-black/30 border border-neutral-800 rounded-lg p-3 hover:border-neutral-700 transition-colors"
+                  title="Clique para ver detalhes"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-200">{a.message}</p>
+                      <p className="text-[10px] text-gray-600">
+                        {new Date(a.timestamp).toLocaleString('pt-PT')}
+                        {a.actorUserName ? ` · por ${a.actorUserName}` : ''}
+                        {a.targetGuestName ? ` · alvo ${a.targetGuestName}` : ''}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-gray-500 shrink-0">{a.type}</span>
+                  </div>
+
+                  {expandedActivityId === a.id && (
+                    <div className="mt-3 pt-3 border-t border-neutral-800 text-[11px] text-gray-400 space-y-1">
+                      <div><span className="text-gray-500">Actor:</span> {a.actorUserName} ({a.actorUserId})</div>
+                      {a.targetGuestId && (
+                        <div><span className="text-gray-500">Alvo:</span> {a.targetGuestName} ({a.targetGuestId})</div>
+                      )}
+                      <div><span className="text-gray-500">Timestamp:</span> {new Date(a.timestamp).toISOString()}</div>
+                      {a.meta && (
+                        <pre className="mt-2 bg-black/40 border border-neutral-800 rounded p-2 overflow-x-auto text-[10px] text-gray-300">
+{JSON.stringify(a.meta, null, 2)}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </button>
               ))}
             </div>
           )}
