@@ -21,6 +21,14 @@ npm install
 npm run dev
 ```
 
+### Local API development
+
+Gemini features now call server-side routes under `/api/*`. To run those locally, prefer:
+
+```bash
+npx vercel dev
+```
+
 ## Deploy on Vercel + Google services
 
 This repo includes Vercel Functions under `api/`:
