@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { withCors } from '../_lib/http';
 import { verifySessionJwt } from '../_lib/auth';
-import { ensureSchema } from '../_lib/postgres';
 import { sql } from '@vercel/postgres';
 import { put } from '@vercel/blob';
+import { ensureUserAndGuest } from '../_lib/userBootstrap';
+import { withTimeout } from '../_lib/timeout';
 
 function dataUrlToBuffer(dataUrl: string) {
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -15,25 +16,31 @@ function dataUrlToBuffer(dataUrl: string) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (withCors(req, res)) return;
-  await ensureSchema();
 
   try {
     const user = await verifySessionJwt(req.headers.authorization);
+    try {
+      await ensureUserAndGuest(user);
+    } catch {}
 
     if (req.method === 'GET') {
-      const { rows } = await sql`
-        select id::text as id,
-               user_id as "userId",
-               user_name as "userName",
-               content,
-               extract(epoch from created_at) * 1000 as "createdAt",
-               image_blob_url as "imageBlobUrl",
-               image_file_name as "imageFileName",
-               image_mime_type as "imageMimeType"
-        from traces
-        order by created_at desc
-        limit 100
-      `;
+      const { rows } = await withTimeout(
+        sql`
+          select id::text as id,
+                 user_id as "userId",
+                 user_name as "userName",
+                 content,
+                 extract(epoch from created_at) * 1000 as "createdAt",
+                 image_blob_url as "imageBlobUrl",
+                 image_file_name as "imageFileName",
+                 image_mime_type as "imageMimeType"
+          from traces
+          order by created_at desc
+          limit 100
+        `,
+        8000,
+        'db traces list'
+      );
 
       const traces = rows.map(r => ({
         id: r.id,
@@ -68,23 +75,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         mimeType = ct;
       }
 
-      const { rows } = await sql`
-        insert into traces (user_id, user_name, content, image_blob_url, image_file_name, image_mime_type)
-        values (${user.id}, ${user.name}, ${text}, ${imageBlobUrl}, ${fileName}, ${mimeType})
-        returning id::text as id,
-                  user_id as "userId",
-                  user_name as "userName",
-                  content,
-                  extract(epoch from created_at) * 1000 as "createdAt",
-                  image_blob_url as "imageBlobUrl",
-                  image_file_name as "imageFileName",
-                  image_mime_type as "imageMimeType"
-      `;
+      const { rows } = await withTimeout(
+        sql`
+          insert into traces (user_id, user_name, content, image_blob_url, image_file_name, image_mime_type)
+          values (${user.id}, ${user.name}, ${text}, ${imageBlobUrl}, ${fileName}, ${mimeType})
+          returning id::text as id,
+                    user_id as "userId",
+                    user_name as "userName",
+                    content,
+                    extract(epoch from created_at) * 1000 as "createdAt",
+                    image_blob_url as "imageBlobUrl",
+                    image_file_name as "imageFileName",
+                    image_mime_type as "imageMimeType"
+        `,
+        8000,
+        'db insert trace'
+      );
 
-      await sql`
-        insert into activities (type, actor_id, actor_name, message, meta)
-        values ('TRACE_POST', ${user.id}, ${user.name}, ${user.name} || ' publicou um traço.', ${JSON.stringify({ traceId: rows[0]?.id })})
-      `;
+      await withTimeout(
+        sql`
+          insert into activities (type, actor_id, actor_name, message, meta)
+          values ('TRACE_POST', ${user.id}, ${user.name}, ${user.name} || ' publicou um traço.', ${JSON.stringify({ traceId: rows[0]?.id })})
+        `,
+        8000,
+        'db insert activity'
+      );
 
       const r = rows[0];
       return res.status(200).json({

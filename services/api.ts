@@ -20,7 +20,6 @@ export type Activity = {
   type: string;
   actorId: string;
   actorName: string;
-  actorEmail: string;
   targetId?: string;
   targetName?: string;
   message: string;
@@ -39,12 +38,6 @@ export type Proof = {
   createdAt: number;
 };
 
-export type PublicConfig = {
-  googleClientId: string;
-  hasGoogleClientId?: boolean;
-  source?: string;
-};
-
 export type Trace = {
   id: string;
   userId: string;
@@ -54,7 +47,6 @@ export type Trace = {
   image?: {
     fileName: string;
     mimeType: string;
-    objectPath: string;
     downloadUrl?: string;
   } | null;
 };

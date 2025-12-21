@@ -1,7 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { requireEnv, optionalEnv } from './env';
-import { ensureSchema } from './postgres';
-import { sql } from '@vercel/postgres';
 
 export type ApiUser = {
   id: string;
@@ -41,24 +39,7 @@ export async function loginWithName(nameRaw: string): Promise<ApiUser> {
   // Stable user id for this app: lowercase name (good enough for party app).
   // If you want stronger identity, add email verification later.
   const id = name.toLowerCase();
-  const user: ApiUser = { id, name, role };
-
-  await ensureSchema();
-  await sql`
-    insert into app_users (id, name, role)
-    values (${user.id}, ${user.name}, ${user.role})
-    on conflict (id) do update set
-      name = excluded.name,
-      role = excluded.role,
-      last_active_at = now()
-  `;
-  await sql`
-    insert into guests (user_id)
-    values (${user.id})
-    on conflict (user_id) do nothing
-  `;
-
-  return user;
+  return { id, name, role };
 }
 
 export async function issueSessionJwt(user: ApiUser) {
