@@ -14,18 +14,27 @@ type ViewState = 'dashboard' | 'guests' | 'memories' | 'program';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [nameInput, setNameInput] = useState('');
+  const [loginError, setLoginError] = useState('');
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   const [isAnimating, setIsAnimating] = useState(false);
 
   // Check for existing session
   useEffect(() => {
     (async () => {
+      // Avoid a race where an early /api/me 401 arrives after login and resets user back to null.
+      const token = localStorage.getItem('nivelx_session_token');
+      if (!token) {
+        setUser(null);
+        return;
+      }
       try {
         const me = await getMe();
         setUser({ id: me.id, name: me.name, role: me.role === 'ADMIN' ? UserRole.ADMIN : UserRole.GUEST });
       } catch {
         // Not logged in
-        setUser(null);
+        // If a token exists now, don't clobber an in-flight login.
+        const stillHasToken = Boolean(localStorage.getItem('nivelx_session_token'));
+        if (!stillHasToken) setUser(null);
       }
     })();
   }, []);
@@ -34,10 +43,13 @@ export default function App() {
     e.preventDefault();
     if (!nameInput.trim()) return;
     setIsAnimating(true);
+    setLoginError('');
     try {
       const u = await authLogin(nameInput.trim());
       setUser({ id: u.id, name: u.name, role: u.role === 'ADMIN' ? UserRole.ADMIN : UserRole.GUEST });
       setCurrentView('dashboard');
+    } catch (e: any) {
+      setLoginError(e?.message ?? 'Falha ao entrar. Tenta novamente.');
     } finally {
       setIsAnimating(false);
     }
@@ -84,6 +96,7 @@ export default function App() {
             <Button type="submit" className="w-full py-4 text-lg" disabled={isAnimating}>
               Entrar na Festa
             </Button>
+            {loginError && <p className="text-xs text-center text-red-400">{loginError}</p>}
             <p className="text-xs text-center text-gray-600">
               Ataliba tem acesso Admin
             </p>
