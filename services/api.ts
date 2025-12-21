@@ -45,6 +45,8 @@ export type Proof = {
 
 export type PublicConfig = {
   googleClientId: string;
+  hasGoogleClientId?: boolean;
+  source?: string;
 };
 
 export type Trace = {

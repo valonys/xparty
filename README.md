@@ -56,3 +56,7 @@ Set these in the Vercel dashboard (Project → Settings → Environment Variable
 ### Notes
 - The frontend no longer injects Gemini keys; it calls `/api/gemini/*`.
 - Firestore/Storage require a service account on Vercel (`GOOGLE_SERVICE_ACCOUNT_JSON`).
+
+### Template
+
+See `env.example` for a key-only template (no secret values).

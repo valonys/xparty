@@ -24,7 +24,7 @@ export const GoogleSignInButton: React.FC<Props> = ({ onCredential }) => {
         clientId = cfg.googleClientId;
       }
       if (!clientId) {
-        setError('Missing GOOGLE_CLIENT_ID');
+        setError('Missing GOOGLE_CLIENT_ID (set it in Vercel Environment Variables → Production, then redeploy)');
         return;
       }
 
