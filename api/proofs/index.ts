@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { withCors } from '../_lib/http';
 import { verifySessionJwt } from '../_lib/auth';
-import { getFirestore } from '../_lib/firebaseAdmin';
+import { ensureSchema } from '../_lib/postgres';
+import { sql } from '@vercel/postgres';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (withCors(req, res)) return;
@@ -9,15 +10,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const user = await verifySessionJwt(req.headers.authorization);
-    const db = getFirestore();
+    await ensureSchema();
 
     if (user.role === 'ADMIN') {
-      const snap = await db.collection('proofs').orderBy('createdAt', 'desc').limit(200).get();
-      return res.status(200).json({ proofs: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+      const { rows } = await sql`
+        select id::text as id, owner_id as "ownerId", owner_name as "ownerName",
+               blob_url as "blobUrl", file_name as "fileName", mime_type as "mimeType",
+               amount, extract(epoch from created_at) * 1000 as "createdAt"
+        from proofs
+        order by created_at desc
+        limit 200
+      `;
+      return res.status(200).json({ proofs: rows });
     }
 
-    const snap = await db.collection('proofs').where('ownerId', '==', user.id).orderBy('createdAt', 'desc').limit(50).get();
-    return res.status(200).json({ proofs: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+    const { rows } = await sql`
+      select id::text as id, owner_id as "ownerId", owner_name as "ownerName",
+             blob_url as "blobUrl", file_name as "fileName", mime_type as "mimeType",
+             amount, extract(epoch from created_at) * 1000 as "createdAt"
+      from proofs
+      where owner_id = ${user.id}
+      order by created_at desc
+      limit 50
+    `;
+    return res.status(200).json({ proofs: rows });
   } catch (e: any) {
     return res.status(401).json({ error: e?.message ?? 'Unauthorized' });
   }

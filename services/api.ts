@@ -1,7 +1,6 @@
 export type ApiUser = {
   id: string;
   name: string;
-  email: string;
   role: 'ADMIN' | 'GUEST';
 };
 
@@ -33,14 +32,11 @@ export type Proof = {
   id: string;
   ownerId: string;
   ownerName: string;
-  ownerEmail: string;
-  objectPath: string;
+  blobUrl: string;
   fileName: string;
   mimeType: string;
   amount?: number | null;
   createdAt: number;
-  uploaded: boolean;
-  uploadedAt?: number;
 };
 
 export type PublicConfig = {
@@ -103,17 +99,13 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function authWithGoogleCredential(credential: string) {
-  const data = await apiFetch<{ token: string; user: ApiUser }>('/api/auth/google', {
+export async function authLogin(name: string) {
+  const data = await apiFetch<{ token: string; user: ApiUser }>('/api/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ credential }),
+    body: JSON.stringify({ name }),
   });
   setSessionToken(data.token);
   return data.user;
-}
-
-export async function getPublicConfig() {
-  return apiFetch<PublicConfig>('/api/config');
 }
 
 export async function getMe() {
@@ -137,11 +129,9 @@ export async function getProofs() {
   return apiFetch<{ proofs: Proof[] }>('/api/proofs');
 }
 
-export async function getProofDownloadUrl(proofId: string) {
-  return apiFetch<{ downloadUrl: string }>('/api/proofs/download-url', {
-    method: 'POST',
-    body: JSON.stringify({ proofId }),
-  });
+export function getProofDownloadUrlFromProof(proof: Proof) {
+  // Vercel Blob URL (public) can be used directly.
+  return proof.blobUrl;
 }
 
 export async function getKpis() {
@@ -153,40 +143,54 @@ export async function patchGuestAsAdmin(targetId: string, patch: Partial<Pick<Gu
 }
 
 export async function createProofUploadUrl(args: { fileName: string; mimeType: string; amount?: number }) {
-  return apiFetch<{ uploadUrl: string; objectPath: string; proofId: string }>('/api/proofs/upload-url', {
+  return apiFetch<{ proof: Proof }>('/api/proofs/upload', {
     method: 'POST',
     body: JSON.stringify(args),
   });
 }
 
-export async function uploadToSignedUrl(uploadUrl: string, file: File) {
-  const res = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': file.type || 'application/octet-stream' },
-    body: file,
+export async function uploadProof(args: { file: File; amount?: number }) {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(args.file);
   });
-  if (!res.ok) throw new Error(`Upload failed (${res.status})`);
-}
 
-export async function confirmProof(proofId: string) {
-  return apiFetch<{ proof: Proof }>('/api/proofs/confirm', { method: 'POST', body: JSON.stringify({ proofId }) });
+  return apiFetch<{ proof: Proof }>('/api/proofs/upload', {
+    method: 'POST',
+    body: JSON.stringify({
+      fileName: args.file.name,
+      mimeType: args.file.type || 'application/octet-stream',
+      amount: args.amount,
+      dataUrl,
+    }),
+  });
 }
 
 export async function getTraces() {
   return apiFetch<{ traces: Trace[] }>('/api/traces');
 }
 
-export async function createTraceImageUploadUrl(args: { fileName: string; mimeType: string }) {
-  return apiFetch<{ uploadUrl: string; objectPath: string }>('/api/traces/upload-url', {
-    method: 'POST',
-    body: JSON.stringify(args),
-  });
-}
+export async function createTrace(args: { content: string; imageFile?: File }) {
+  let imageDataUrl: string | undefined;
+  if (args.imageFile) {
+    imageDataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error('Failed to read image'));
+      reader.readAsDataURL(args.imageFile as File);
+    });
+  }
 
-export async function createTrace(args: { content: string; image?: { objectPath: string; fileName: string; mimeType: string } }) {
   return apiFetch<{ trace: Trace }>('/api/traces', {
     method: 'POST',
-    body: JSON.stringify(args),
+    body: JSON.stringify({
+      content: args.content,
+      imageDataUrl,
+      imageFileName: args.imageFile?.name,
+      imageMimeType: args.imageFile?.type,
+    }),
   });
 }
 

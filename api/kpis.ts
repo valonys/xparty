@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { withCors } from './_lib/http';
 import { verifySessionJwt } from './_lib/auth';
-import { getFirestore } from './_lib/firebaseAdmin';
+import { ensureSchema } from './_lib/postgres';
+import { sql } from '@vercel/postgres';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (withCors(req, res)) return;
@@ -9,35 +10,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     await verifySessionJwt(req.headers.authorization);
-    const db = getFirestore();
-    const snap = await db.collection('guests').limit(1000).get();
-    const guests = snap.docs.map(d => d.data() as any);
+    await ensureSchema();
 
-    const totalGuests = guests.length;
-    const confirmedCount = guests.filter(g => g.status === 'confirmed').length;
-    const declinedCount = guests.filter(g => g.status === 'declined').length;
-    const pendingCount = guests.filter(g => g.status === 'pending').length;
+    const { rows } = await sql`
+      select
+        count(*)::int as "totalGuests",
+        sum(case when status = 'confirmed' then 1 else 0 end)::int as "confirmedCount",
+        sum(case when status = 'declined' then 1 else 0 end)::int as "declinedCount",
+        sum(case when status = 'pending' then 1 else 0 end)::int as "pendingCount",
+        sum(case when payment_status = 'paid' then 1 else 0 end)::int as "paidCount",
+        sum(case when payment_status = 'partial' then 1 else 0 end)::int as "partialCount",
+        sum(case when payment_status = 'unpaid' then 1 else 0 end)::int as "unpaidCount",
+        sum(total_due)::int as "totalDue",
+        sum(amount_paid)::int as "totalPaid"
+      from guests
+    `;
 
-    const paidCount = guests.filter(g => g.paymentStatus === 'paid').length;
-    const partialCount = guests.filter(g => g.paymentStatus === 'partial').length;
-    const unpaidCount = guests.filter(g => g.paymentStatus === 'unpaid').length;
-
-    const totalDue = guests.reduce((acc, g) => acc + (Number(g.totalDue) || 0), 0);
-    const totalPaid = guests.reduce((acc, g) => acc + (Number(g.amountPaid) || 0), 0);
-
-    return res.status(200).json({
-      kpis: {
-        totalGuests,
-        confirmedCount,
-        declinedCount,
-        pendingCount,
-        paidCount,
-        partialCount,
-        unpaidCount,
-        totalDue,
-        totalPaid,
-      },
-    });
+    return res.status(200).json({ kpis: rows[0] });
   } catch (e: any) {
     return res.status(401).json({ error: e?.message ?? 'Unauthorized' });
   }

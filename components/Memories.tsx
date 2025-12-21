@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { createTrace, createTraceImageUploadUrl, getTraces, Trace, uploadToSignedUrl } from '../services/api';
+import { createTrace, getTraces, Trace } from '../services/api';
 import { generateTraceEnhancement, analyzePartyPhoto } from '../services/geminiService';
 import { Button } from './Button';
 import { Send, Image as ImageIcon, Sparkles, Clock, Camera } from 'lucide-react';
@@ -58,17 +58,7 @@ export const Memories: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     setIsPosting(true);
     (async () => {
       try {
-        let imagePayload: { objectPath: string; fileName: string; mimeType: string } | undefined;
-        if (selectedImageFile) {
-          const { uploadUrl, objectPath } = await createTraceImageUploadUrl({
-            fileName: selectedImageFile.name,
-            mimeType: selectedImageFile.type || 'application/octet-stream',
-          });
-          await uploadToSignedUrl(uploadUrl, selectedImageFile);
-          imagePayload = { objectPath, fileName: selectedImageFile.name, mimeType: selectedImageFile.type || 'application/octet-stream' };
-        }
-
-        await createTrace({ content: newTraceContent, image: imagePayload });
+        await createTrace({ content: newTraceContent, imageFile: selectedImageFile ?? undefined });
         const refreshed = await getTraces();
         setTraces(refreshed.traces);
         setNewTraceContent('');

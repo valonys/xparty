@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from './types';
-import { authWithGoogleCredential, clearSessionToken, getMe } from './services/api';
+import { authLogin, clearSessionToken, getMe } from './services/api';
 import { Logo } from './components/Logo';
 import { Button } from './components/Button';
 import { LayoutDashboard, Users, MessageSquare, Calendar, LogOut, CheckCircle } from 'lucide-react';
@@ -8,12 +8,12 @@ import { Dashboard } from './components/Dashboard';
 import { GuestList } from './components/GuestList';
 import { Memories } from './components/Memories';
 import { Program } from './components/Program';
-import { GoogleSignInButton } from './components/GoogleSignInButton';
 
 type ViewState = 'dashboard' | 'guests' | 'memories' | 'program';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [nameInput, setNameInput] = useState('');
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   const [isAnimating, setIsAnimating] = useState(false);
 
@@ -22,7 +22,7 @@ export default function App() {
     (async () => {
       try {
         const me = await getMe();
-        setUser({ id: me.id, name: me.name, email: me.email, role: me.role === 'ADMIN' ? UserRole.ADMIN : UserRole.GUEST });
+        setUser({ id: me.id, name: me.name, role: me.role === 'ADMIN' ? UserRole.ADMIN : UserRole.GUEST });
       } catch {
         // Not logged in
         setUser(null);
@@ -30,11 +30,13 @@ export default function App() {
     })();
   }, []);
 
-  const handleGoogleCredential = async (credential: string) => {
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nameInput.trim()) return;
     setIsAnimating(true);
     try {
-      const u = await authWithGoogleCredential(credential);
-      setUser({ id: u.id, name: u.name, email: u.email, role: u.role === 'ADMIN' ? UserRole.ADMIN : UserRole.GUEST });
+      const u = await authLogin(nameInput.trim());
+      setUser({ id: u.id, name: u.name, role: u.role === 'ADMIN' ? UserRole.ADMIN : UserRole.GUEST });
       setCurrentView('dashboard');
     } finally {
       setIsAnimating(false);
@@ -67,13 +69,25 @@ export default function App() {
             <p className="text-gray-400 tracking-wide uppercase text-sm">25 Anos de Irmandade</p>
           </div>
 
-          <div className="w-full max-w-sm space-y-4 bg-neutral-900/50 backdrop-blur-md p-8 rounded-2xl border border-neutral-800 shadow-2xl">
-            <p className="text-xs text-center text-gray-500 uppercase tracking-wider">Entrar com Google</p>
-            <GoogleSignInButton onCredential={handleGoogleCredential} />
+          <form onSubmit={handleLogin} className="w-full max-w-sm space-y-4 bg-neutral-900/50 backdrop-blur-md p-8 rounded-2xl border border-neutral-800 shadow-2xl">
+            <p className="text-xs text-center text-gray-500 uppercase tracking-wider">Entrar</p>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Nome</label>
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                className="w-full bg-black/50 border border-neutral-700 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all placeholder-gray-600"
+                placeholder="Insere o teu nome..."
+              />
+            </div>
+            <Button type="submit" className="w-full py-4 text-lg" disabled={isAnimating}>
+              Entrar na Festa
+            </Button>
             <p className="text-xs text-center text-gray-600">
-               Sessão segura via Google · Ataliba tem acesso Admin
+              Ataliba tem acesso Admin
             </p>
-          </div>
+          </form>
         </div>
       </div>
     );

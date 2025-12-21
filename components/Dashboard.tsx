@@ -5,15 +5,13 @@ import {
   Guest,
   Kpis,
   Proof,
-  confirmProof,
-  createProofUploadUrl,
+  getProofDownloadUrlFromProof,
   getActivities,
   getGuests,
   getKpis,
-  getProofDownloadUrl,
   getProofs,
   patchMyGuest,
-  uploadToSignedUrl,
+  uploadProof,
 } from '../services/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, Tooltip } from 'recharts';
 import { Wallet, Users, CheckCircle2, Calendar, Upload, FileText } from 'lucide-react';
@@ -114,13 +112,7 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
 
     setIsUploadingProof(true);
     try {
-      const { uploadUrl, proofId } = await createProofUploadUrl({
-        fileName: selectedProof.name,
-        mimeType: selectedProof.type || 'application/octet-stream',
-        amount: Number.isFinite(paymentAmount) ? paymentAmount : undefined,
-      });
-      await uploadToSignedUrl(uploadUrl, selectedProof);
-      await confirmProof(proofId);
+      await uploadProof({ file: selectedProof, amount: Number.isFinite(paymentAmount) ? paymentAmount : undefined });
 
       // Update guest payment totals (server stores guest record; we calculate next values client-side for now)
       const newAmountPaid = (myGuest.amountPaid ?? 0) + (paymentAmount > 0 ? paymentAmount : 0);
@@ -144,8 +136,10 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
   };
 
   const handleDownloadProof = async (proofId: string) => {
-    const { downloadUrl } = await getProofDownloadUrl(proofId);
-    window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+    const p = proofs.find(x => x.id === proofId);
+    if (!p) return;
+    const url = getProofDownloadUrlFromProof(p);
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -415,7 +409,7 @@ export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
                       {typeof p.amount === 'number' ? ` (${p.amount.toLocaleString()} AOA)` : ''}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {new Date(p.createdAt).toLocaleString('pt-PT')} · {p.ownerEmail}
+                      {new Date(p.createdAt).toLocaleString('pt-PT')}
                     </p>
                   </div>
                   <button className="text-xs text-red-400 hover:text-red-300 underline" onClick={() => handleDownloadProof(p.id)}>

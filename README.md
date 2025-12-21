@@ -32,26 +32,22 @@ npx vercel dev
 ## Deploy on Vercel + Google services
 
 This repo includes Vercel Functions under `api/`:
-- `POST /api/auth/google` (verify Google ID token, return session JWT)
+- `POST /api/auth/login` (simple username login, return session JWT)
 - `GET /api/me`
 - `GET/PATCH /api/guests`
 - `GET /api/activities`
-- `POST /api/proofs/upload-url` (signed upload URL)
-- `POST /api/proofs/confirm`
-- `POST /api/gemini/*` (Gemini calls run server-side)
+- `POST /api/proofs/*` (proof uploads/downloads)
+- `POST /api/traces/*` (trace posts + optional image upload)
 
 ### Required Vercel Environment Variables
 
 Set these in the Vercel dashboard (Project → Settings → Environment Variables):
 
-- `VITE_GOOGLE_CLIENT_ID`: Google OAuth client id (public, used by the browser for Google Sign-In)
-- `GOOGLE_CLIENT_ID`: Google OAuth client id (Web)
 - `SECRET_KEY`: used to sign session JWTs
-- `ADMIN_EMAILS`: comma-separated list of admin emails (include Ataliba’s email here)
-- `GEMINI_API_KEY`: server-side Gemini API key
-- `GOOGLE_SERVICE_ACCOUNT_JSON`: **stringified** service account JSON with Firestore + Storage permissions
-- `CLOUD_STORAGE_BUCKET`: bucket name for payment proofs (e.g. `my-bucket`)
-- `ALLOWED_ORIGINS`: comma-separated list of allowed origins (e.g. your Vercel URL)
+- `ADMIN_NAMES`: comma-separated list of admin names (default: `ataliba`)
+- `POSTGRES_URL` / Vercel Postgres variables (auto-managed by Vercel Postgres integration)
+- `BLOB_READ_WRITE_TOKEN` (auto-managed by Vercel Blob integration)
+- `ALLOWED_ORIGINS`: comma-separated list of allowed origins (optional)
 
 ### Notes
 - The frontend no longer injects Gemini keys; it calls `/api/gemini/*`.

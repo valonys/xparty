@@ -1,64 +1,102 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { withCors } from '../_lib/http';
 import { verifySessionJwt } from '../_lib/auth';
-import { getBucket, getFirestore } from '../_lib/firebaseAdmin';
-import { addActivity } from '../_lib/db';
+import { ensureSchema } from '../_lib/postgres';
+import { sql } from '@vercel/postgres';
+import { put } from '@vercel/blob';
+
+function dataUrlToBuffer(dataUrl: string) {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new Error('Invalid dataUrl');
+  const mimeType = match[1];
+  const b64 = match[2];
+  return { mimeType, buffer: Buffer.from(b64, 'base64') };
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (withCors(req, res)) return;
+  await ensureSchema();
 
   try {
     const user = await verifySessionJwt(req.headers.authorization);
-    const db = getFirestore();
 
     if (req.method === 'GET') {
-      const snap = await db.collection('traces').orderBy('createdAt', 'desc').limit(100).get();
-      const bucket = getBucket();
+      const { rows } = await sql`
+        select id::text as id,
+               user_id as "userId",
+               user_name as "userName",
+               content,
+               extract(epoch from created_at) * 1000 as "createdAt",
+               image_blob_url as "imageBlobUrl",
+               image_file_name as "imageFileName",
+               image_mime_type as "imageMimeType"
+        from traces
+        order by created_at desc
+        limit 100
+      `;
 
-      const traces = await Promise.all(
-        snap.docs.map(async d => {
-          const data = d.data() as any;
-          let downloadUrl: string | undefined;
-          if (data.image?.objectPath) {
-            const file = bucket.file(String(data.image.objectPath));
-            const [url] = await file.getSignedUrl({ version: 'v4', action: 'read', expires: Date.now() + 10 * 60 * 1000 });
-            downloadUrl = url;
-          }
-          return {
-            id: d.id,
-            userId: data.userId,
-            userName: data.userName,
-            content: data.content,
-            createdAt: data.createdAt,
-            image: data.image ? { ...data.image, downloadUrl } : null,
-          };
-        })
-      );
+      const traces = rows.map(r => ({
+        id: r.id,
+        userId: r.userId,
+        userName: r.userName,
+        content: r.content,
+        createdAt: Number(r.createdAt),
+        image: r.imageBlobUrl
+          ? { fileName: r.imageFileName, mimeType: r.imageMimeType, downloadUrl: r.imageBlobUrl }
+          : null,
+      }));
 
       return res.status(200).json({ traces });
     }
 
     if (req.method === 'POST') {
-      const { content, image } = (req.body ?? {}) as any;
-      if (!content && !image) return res.status(400).json({ error: 'Missing content' });
-      const now = Date.now();
-      const doc = {
-        userId: user.id,
-        userName: user.name,
-        userEmail: user.email,
-        content: String(content ?? ''),
-        createdAt: now,
-        image: image
-          ? {
-              objectPath: String(image.objectPath),
-              fileName: String(image.fileName),
-              mimeType: String(image.mimeType),
-            }
-          : null,
-      };
-      const ref = await db.collection('traces').add(doc);
-      await addActivity(user, { type: 'TRACE_POST', message: `${user.name} publicou um traço.`, meta: { traceId: ref.id } });
-      return res.status(200).json({ trace: { id: ref.id, ...doc } });
+      const { content, imageDataUrl, imageFileName, imageMimeType } = (req.body ?? {}) as any;
+      const text = String(content ?? '');
+      if (!text && !imageDataUrl) return res.status(400).json({ error: 'Missing content' });
+
+      let imageBlobUrl: string | null = null;
+      let fileName: string | null = null;
+      let mimeType: string | null = null;
+
+      if (imageDataUrl) {
+        const safeName = String(imageFileName || `image_${Date.now()}`).replace(/[^\w.\-() ]+/g, '_');
+        const { mimeType: inferred, buffer } = dataUrlToBuffer(String(imageDataUrl));
+        const ct = String(imageMimeType || inferred || 'application/octet-stream');
+        const blob = await put(`traces/${user.id}/${Date.now()}_${safeName}`, buffer, { access: 'public', contentType: ct });
+        imageBlobUrl = blob.url;
+        fileName = safeName;
+        mimeType = ct;
+      }
+
+      const { rows } = await sql`
+        insert into traces (user_id, user_name, content, image_blob_url, image_file_name, image_mime_type)
+        values (${user.id}, ${user.name}, ${text}, ${imageBlobUrl}, ${fileName}, ${mimeType})
+        returning id::text as id,
+                  user_id as "userId",
+                  user_name as "userName",
+                  content,
+                  extract(epoch from created_at) * 1000 as "createdAt",
+                  image_blob_url as "imageBlobUrl",
+                  image_file_name as "imageFileName",
+                  image_mime_type as "imageMimeType"
+      `;
+
+      await sql`
+        insert into activities (type, actor_id, actor_name, message, meta)
+        values ('TRACE_POST', ${user.id}, ${user.name}, ${user.name} || ' publicou um traço.', ${JSON.stringify({ traceId: rows[0]?.id })})
+      `;
+
+      const r = rows[0];
+      return res.status(200).json({
+        trace: {
+          id: r.id,
+          userId: r.userId,
+          userName: r.userName,
+          content: r.content,
+          createdAt: Number(r.createdAt),
+          image: r.imageBlobUrl ? { fileName: r.imageFileName, mimeType: r.imageMimeType, downloadUrl: r.imageBlobUrl } : null,
+        },
+      });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
