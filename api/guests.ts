@@ -41,14 +41,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { status, paymentStatus, amountPaid, targetId } = (req.body ?? {}) as any;
       const effectiveId = user.role === 'ADMIN' && typeof targetId === 'string' ? String(targetId) : user.id;
 
-      const patch: any[] = [];
-      if (status) patch.push(sql`status = ${status}`);
-      if (paymentStatus) patch.push(sql`payment_status = ${paymentStatus}`);
-      if (typeof amountPaid === 'number') patch.push(sql`amount_paid = ${amountPaid}`);
+      // @vercel/postgres@0.10.0 doesn't support sql.join; use a static update with COALESCE.
+      const statusVal = typeof status === 'string' ? status : null;
+      const paymentStatusVal = typeof paymentStatus === 'string' ? paymentStatus : null;
+      const amountPaidVal = typeof amountPaid === 'number' ? amountPaid : null;
 
       await sql`
         update guests
-        set ${sql.join(patch, sql`, `)}, updated_at = now()
+        set
+          status = coalesce(${statusVal}, status),
+          payment_status = coalesce(${paymentStatusVal}, payment_status),
+          amount_paid = coalesce(${amountPaidVal}, amount_paid),
+          updated_at = now()
         where user_id = ${effectiveId}
       `;
 
